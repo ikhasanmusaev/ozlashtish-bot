@@ -9,6 +9,7 @@ from aiogram.contrib.fsm_storage.memory import MemoryStorage
 from aiogram.dispatcher import FSMContext
 from aiogram.dispatcher.filters import Text
 from aiogram.utils import executor
+from aiogram.utils.executor import start_webhook
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
@@ -26,6 +27,14 @@ bot = Bot(token=TOKEN)
 
 storage = MemoryStorage()
 dp = Dispatcher(bot, storage=storage)
+
+WEBHOOK_HOST = 'https://62.109.26.206:443'
+WEBHOOK_PATH = '/webhook'
+WEBHOOK_URL = f"{WEBHOOK_HOST}{WEBHOOK_PATH}"
+
+WEBAPP_HOST = '0.0.0.0'
+WEBAPP_PORT = 3001
+
 
 
 async def kick_user(state, message):
@@ -271,7 +280,13 @@ async def process_set_results(message: types.Message, state: FSMContext):
     await bot.send_message(message.chat.id, link)
 
 
-async def shutdown(dispatcher: Dispatcher):
+async def on_startup(dp):
+    await bot.set_webhook(WEBHOOK_URL)
+
+
+async def on_shutdown(dispatcher: Dispatcher):
+    logging.warning('Shutting down..')
+    await bot.delete_webhook()
     await dispatcher.storage.close()
     await dispatcher.storage.wait_closed()
 
@@ -290,4 +305,14 @@ async def shutdown(dispatcher: Dispatcher):
 
 
 if __name__ == '__main__':
-    executor.start_polling(dp, skip_updates=True, on_shutdown=shutdown)
+#    executor.start_polling(dp, skip_updates=True, on_shutdown=on_shutdown)
+    start_webhook(
+        dispatcher=dp,
+        webhook_path=WEBHOOK_PATH,
+        on_startup=on_startup,
+        on_shutdown=on_shutdown,
+        skip_updates=True,
+        host=WEBAPP_HOST,
+        port=WEBAPP_PORT,
+    )
+
