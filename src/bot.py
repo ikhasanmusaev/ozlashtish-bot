@@ -3,6 +3,7 @@ from os import path, getenv
 import logging
 import random
 import time
+import ssl
 
 from aiogram import Bot, Dispatcher, types
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
@@ -24,16 +25,20 @@ scheduler = AsyncIOScheduler()
 
 TOKEN = getenv('TOKEN')
 bot = Bot(token=TOKEN)
+IP = getenv('WEBHOOK_HOST')
 
 storage = MemoryStorage()
 dp = Dispatcher(bot, storage=storage)
 
-WEBHOOK_HOST = 'https://62.109.26.206:443'
-WEBHOOK_PATH = '/webhook'
+WEBHOOK_HOST = f'https://{IP}:8443'
+WEBHOOK_PATH = f'/web/'
 WEBHOOK_URL = f"{WEBHOOK_HOST}{WEBHOOK_PATH}"
 
+WEBHOOK_SSL_CERT = path.abspath(path.join(path.dirname(path.abspath(__file__)), './webhook_cert.pem'))
+WEBHOOK_SSL_PRIV = path.abspath(path.join(path.dirname(path.abspath(__file__)), './webhook_pkey.pem'))
+
 WEBAPP_HOST = '0.0.0.0'
-WEBAPP_PORT = 3001
+WEBAPP_PORT = '8443'
 
 
 
@@ -305,14 +310,17 @@ async def on_shutdown(dispatcher: Dispatcher):
 
 
 if __name__ == '__main__':
-#    executor.start_polling(dp, skip_updates=True, on_shutdown=on_shutdown)
-    start_webhook(
-        dispatcher=dp,
-        webhook_path=WEBHOOK_PATH,
-        on_startup=on_startup,
-        on_shutdown=on_shutdown,
-        skip_updates=True,
-        host=WEBAPP_HOST,
-        port=WEBAPP_PORT,
-    )
+    executor.start_polling(dp, skip_updates=True, on_shutdown=on_shutdown)
+#    context = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)
+ #   context.load_cert_chain(WEBHOOK_SSL_CERT, WEBHOOK_SSL_PRIV)
+  #  start_webhook(
+  #      dispatcher=dp,
+   #     webhook_path=WEBHOOK_PATH,
+    #    on_startup=on_startup,
+     #   on_shutdown=on_shutdown,
+    #    skip_updates=True,
+   #     host=WEBAPP_HOST,
+  #      port=WEBAPP_PORT,
+ #       ssl_context = context
+#    )
 
