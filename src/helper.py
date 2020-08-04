@@ -14,7 +14,7 @@ def generate_key(length):
 def get_results(results):
     content = '<h3>Ro`yxat</h3> <hr> '
     for i in results:
-        content += f'<p>Ism: {i["name"]} Username: {i["username"]}</p>'
+        content += f'<p>Ism: {i["name"]} Username: {i["username"]} Success: {i["success"]}</p>'
     response = telegraph.create_page(
         "A'lochilar",
         html_content=content
@@ -48,7 +48,8 @@ def generate_ans(ans_str):
 
 def run_time(scheduler, function, time, args):
     scheduler.add_job(function, 'interval', args=args, seconds=time)
-    scheduler.start()
+    if not scheduler.running:
+        scheduler.start()
 
 
 class FormTeacher(StatesGroup):

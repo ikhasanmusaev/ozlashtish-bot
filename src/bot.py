@@ -15,9 +15,9 @@ from aiogram.utils.executor import start_webhook
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from helper import generate_key, FormTeacher, FormAbt, generate_test, generate_ans, run_time, get_results
-from db.connection import question_coll, results_coll
+from db.connection import question_coll, results_coll, on_coll, attempt_coll
 
-logging.basicConfig(level=logging.INFO)
+# logging.basicConfig(level=logging.INFO)
 
 env_path = path.abspath(path.join(path.dirname(path.abspath(__file__)), '../.env'))
 load_dotenv(dotenv_path=env_path)
@@ -41,9 +41,9 @@ WEBAPP_HOST = '0.0.0.0'
 WEBAPP_PORT = '8443'
 
 
-
 async def kick_user(state, message):
-    scheduler.shutdown()
+    if scheduler.running:
+        scheduler.shutdown()
     await state.finish()
     await bot.send_message(message.chat.id,
                            'Siz belgilangan vaqtda javob bera olmadingiz yoki sizning javobingiz noto`g`ri.\n Tayyorlanib, keyinroq harakat qiling.',
@@ -52,11 +52,15 @@ async def kick_user(state, message):
 
 @dp.message_handler(commands='start')
 async def cmd_start(message: types.Message):
+    is_on = on_coll.find_one({'find': 'find'}, ['on'])
+    if not is_on['on']:
+        return
+
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, selective=True)
     markup.add('Boshlash!')
 
-    await message.reply("Salom! O'z ustingizda ishlashdan to'xtamang!")
-    await message.reply("Savol-javobni boshlash uchun 'Boshlash!' ni bosing", reply_markup=markup)
+    await bot.send_message(message.chat.id, "Salom! O'z ustingizda ishlashdan to'xtamang!")
+    await bot.send_message(message.chat.id, "Savol-javobni boshlash uchun 'Boshlash!' ni bosing", reply_markup=markup)
 
 
 # You can use state '*' if you need to handle all states
@@ -73,10 +77,8 @@ async def cancel_handler(message: types.Message, state: FSMContext):
     logging.info('Cancelling state %r', current_state)
     # Cancel state and inform user about it
     await state.finish()
-    try:
+    if scheduler.running:
         scheduler.shutdown()
-    except:
-        pass
     # And remove keyboard (just in case)
     await message.reply('Cancelled.', reply_markup=types.ReplyKeyboardRemove())
 
@@ -185,6 +187,10 @@ async def process_save(message: types.Message, state: FSMContext):
 
 @dp.message_handler(Text(equals='Boshlash!', ignore_case=True) | Text(equals='Boshlash', ignore_case=True))
 async def process_starting(message: types.Message):
+    is_on = on_coll.find_one({'find': 'find'}, ['on'])
+    if not is_on['on']:
+        return
+
     await FormAbt.name.set()
     markup = types.ReplyKeyboardRemove()
 
@@ -206,6 +212,17 @@ async def process_key_invalid(message: types.Message):
 
 @dp.message_handler(lambda message: message.text[0] == "_", state=FormAbt.question)
 async def process_get_questions(message: types.Message, state: FSMContext):
+    attempt = attempt_coll.find_one({'user_id': message.from_user.id, 'key': message.text})
+    if not attempt:
+        attempt_coll.insert_one({"user_id": message.from_user.id, 'key': message.text, 'count': 1})
+    elif int(attempt['count']) < 5:
+        count = attempt['count']
+        attempt_coll.update_one({'user_id': message.from_user.id},
+                                {"$set": {"user_id": message.from_user.id, 'count': count + 1, 'key': message.text}},
+                                upsert=False)
+    else:
+        await bot.send_message(message.chat.id, 'Siz 5ta imkoniyatdan foydalanib bo`ldingiz!')
+        return
     data = question_coll.find_one({"key": message.text}, ['questions', 'time', '-_id'])
     if data:
         question = data['questions']
@@ -236,11 +253,25 @@ async def process_get_questions(message: types.Message, state: FSMContext):
     result = data.get('result') or 0
     if data['correct'] != message.text:
         await kick_user(state, message)
+
+        attempt = attempt_coll.find_one({'user_id': message.from_user.id, 'key': data['key']})
+
+        if int(attempt['count']) >= 5:
+            username = message.from_user.username or None
+            user_result = {
+                'name': data['name'],
+                'username': username,
+                'key': data['key'],
+                'user_id': message.from_user.id,
+                'success': 'No'
+            }
+            results_coll.update_one({'user_id': message.from_user.id, 'key': data['key']}, {"$set": user_result},
+                                    upsert=True)
     else:
         result += 1
         if result < 5:
-
-            scheduler.shutdown()
+            if scheduler.running:
+                scheduler.shutdown()
             question = data['question']
             time_interval = data['time']
             answers = generate_ans(question[result][1])
@@ -264,10 +295,13 @@ async def process_get_questions(message: types.Message, state: FSMContext):
                 'name': data['name'],
                 'username': username,
                 'key': data['key'],
+                'user_id': message.from_user.id,
+                'success': 'Yes'
             }
-            results_coll.insert_one(user_result)
+            results_coll.update_one({'user_id': message.from_user.id, 'key': data['key']}, user_result, upsert=True)
             await state.finish()
-            scheduler.shutdown()
+            if scheduler.running:
+                scheduler.shutdown()
 
 
 @dp.message_handler(commands='getR')
@@ -280,13 +314,34 @@ async def process_get_results(message: types.Message):
 @dp.message_handler(state=FormTeacher.get_result)
 async def process_set_results(message: types.Message, state: FSMContext):
     data = [i for i in results_coll.find({"key": message.text}, ['name', 'username', '-_id'])]
-    link = get_results(data)
+    if not data:
+        await bot.send_message(message.chat.id, "Kod xato!")
+    else:
+        link = get_results(data)
 
     await bot.send_message(message.chat.id, link)
 
 
 async def on_startup(dp):
     await bot.set_webhook(WEBHOOK_URL)
+
+
+@dp.message_handler(commands=['offBot'])
+async def process_on(message: types.Message):
+    on_coll.update_one({'find': 'find'}, {"$set": {'on': False}}, upsert=True)
+    await bot.send_message(message.chat.id, 'Bot imkoniyatlari o`chirildi')
+
+
+#######
+########
+######## popitka qiliw
+########
+
+
+@dp.message_handler(commands=['onBot'])
+async def process_on(message: types.Message):
+    on_coll.update_one({'find': 'find'}, {"$set": {'on': True}}, upsert=False)
+    await bot.send_message(message.chat.id, 'Bot imkoniyatlari faollashtirildi')
 
 
 async def on_shutdown(dispatcher: Dispatcher):
@@ -296,31 +351,17 @@ async def on_shutdown(dispatcher: Dispatcher):
     await dispatcher.storage.wait_closed()
 
 
-# async def on_startup(dispatcher: Dispatcher):
-#     scheduler.start()
-#
-#
-# async def on_shutdown(dispatcher: Dispatcher):
-#     scheduler.shutdown()
-#
-#
-# def setup(executor: Executor):
-#     executor.on_startup(on_startup)
-#     executor.on_shutdown(on_shutdown)
-
-
 if __name__ == '__main__':
     executor.start_polling(dp, skip_updates=True, on_shutdown=on_shutdown)
 #    context = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)
- #   context.load_cert_chain(WEBHOOK_SSL_CERT, WEBHOOK_SSL_PRIV)
-  #  start_webhook(
-  #      dispatcher=dp,
-   #     webhook_path=WEBHOOK_PATH,
-    #    on_startup=on_startup,
-     #   on_shutdown=on_shutdown,
-    #    skip_updates=True,
-   #     host=WEBAPP_HOST,
-  #      port=WEBAPP_PORT,
- #       ssl_context = context
+#   context.load_cert_chain(WEBHOOK_SSL_CERT, WEBHOOK_SSL_PRIV)
+#  start_webhook(
+#      dispatcher=dp,
+#     webhook_path=WEBHOOK_PATH,
+#    on_startup=on_startup,
+#   on_shutdown=on_shutdown,
+#    skip_updates=True,
+#     host=WEBAPP_HOST,
+#      port=WEBAPP_PORT,
+#       ssl_context = context
 #    )
-
