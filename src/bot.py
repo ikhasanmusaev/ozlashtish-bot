@@ -85,7 +85,7 @@ async def cancel_handler(message: types.Message, state: FSMContext):
 
 @dp.message_handler(commands='addQ')
 async def add_q_handler(message: types.Message):
-    await FormTeacher.count.set()
+    
     markup = types.ReplyKeyboardRemove()
 
     await message.reply('Nechta savol kiritasiz?', reply_markup=markup)
@@ -215,13 +215,13 @@ async def process_get_questions(message: types.Message, state: FSMContext):
     attempt = attempt_coll.find_one({'user_id': message.from_user.id, 'key': message.text})
     if not attempt:
         attempt_coll.insert_one({"user_id": message.from_user.id, 'key': message.text, 'count': 1})
-    elif int(attempt['count']) < 5:
+    elif int(attempt['count']) < 10:
         count = attempt['count']
         attempt_coll.update_one({'user_id': message.from_user.id},
                                 {"$set": {"user_id": message.from_user.id, 'count': count + 1, 'key': message.text}},
                                 upsert=False)
     else:
-        await bot.send_message(message.chat.id, 'Siz 5ta imkoniyatdan foydalanib bo`ldingiz!')
+        await bot.send_message(message.chat.id, 'Siz 10ta imkoniyatdan foydalanib bo`ldingiz!')
         return
     data = question_coll.find_one({"key": message.text}, ['questions', 'time', '-_id'])
     if data:
@@ -256,7 +256,7 @@ async def process_get_questions(message: types.Message, state: FSMContext):
 
         attempt = attempt_coll.find_one({'user_id': message.from_user.id, 'key': data['key']})
 
-        if int(attempt['count']) >= 5:
+        if int(attempt['count']) >= 10:
             username = message.from_user.username or None
             user_result = {
                 'name': data['name'],
@@ -269,7 +269,7 @@ async def process_get_questions(message: types.Message, state: FSMContext):
                                     upsert=True)
     else:
         result += 1
-        if result < 5:
+        if result < 20:
             if scheduler.running:
                 scheduler.shutdown()
             question = data['question']
@@ -298,7 +298,7 @@ async def process_get_questions(message: types.Message, state: FSMContext):
                 'user_id': message.from_user.id,
                 'success': 'Yes'
             }
-            results_coll.update_one({'user_id': message.from_user.id, 'key': data['key']}, user_result, upsert=True)
+            results_coll.update_one({'user_id': message.from_user.id, 'key': data['key']}, {'$set': user_result}, upsert=True)
             await state.finish()
             if scheduler.running:
                 scheduler.shutdown()
@@ -313,7 +313,7 @@ async def process_get_results(message: types.Message):
 
 @dp.message_handler(state=FormTeacher.get_result)
 async def process_set_results(message: types.Message, state: FSMContext):
-    data = [i for i in results_coll.find({"key": message.text}, ['name', 'username', '-_id'])]
+    data = [i for i in results_coll.find({"key": message.text}, ['name', 'username', '-_id', 'success'])]
     if not data:
         await bot.send_message(message.chat.id, "Kod xato!")
     else:

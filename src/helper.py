@@ -13,8 +13,14 @@ def generate_key(length):
 
 def get_results(results):
     content = '<h3>Ro`yxat</h3> <hr> '
+    content_yes = ''
+    content_no = ''
     for i in results:
-        content += f'<p>Ism: {i["name"]} Username: {i["username"]} Success: {i["success"]}</p>'
+        if i['success'] == 'Yes':
+            content_yes += f'<p>{i["name"]}</p>'
+        else:
+            content_no += f'<p>{i["name"]}</p>'
+    content += '<b>O`tganlar:</b><br>' + content_yes + '<hr>' + '<b>O`ta olmaganlar:</b><br>' + content_no
     response = telegraph.create_page(
         "A'lochilar",
         html_content=content
