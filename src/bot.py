@@ -46,7 +46,7 @@ async def kick_user(state, message):
         scheduler.shutdown()
     await state.finish()
     await bot.send_message(message.chat.id,
-                           'Siz belgilangan vaqtda javob bera olmadingiz yoki sizning javobingiz noto`g`ri.\n Tayyorlanib, keyinroq harakat qiling.',
+                           'Siz belgilangan vaqtda javob bera olmadingiz.\n Tayyorlanib, keyinroq harakat qiling.',
                            reply_markup=types.ReplyKeyboardRemove())
 
 
@@ -85,7 +85,7 @@ async def cancel_handler(message: types.Message, state: FSMContext):
 
 @dp.message_handler(commands='addQ')
 async def add_q_handler(message: types.Message):
-    
+    await FormTeacher.count.set()
     markup = types.ReplyKeyboardRemove()
 
     await message.reply('Nechta savol kiritasiz?', reply_markup=markup)
@@ -120,6 +120,18 @@ async def process_time(message: types.Message, state: FSMContext):
         "2-savol rasmi, 2-savol javoblari va h.k.z...")
 
 
+@dp.message_handler(Text(equals='Back', ignore_case=True), state=FormTeacher.questionsI)
+async def process_edit_prev(message: types.Message, state: FSMContext):
+    await FormTeacher.next()
+    data = await state.get_data()
+    questions_q = data.get('questionsQ')
+    del questions_q[-1]
+    await state.update_data(questionsQ=questions_q)
+    print(questions_q)
+    await bot.send_message(message.chat.id, 'Oldingi savolning javoblarini qayta kiriting',
+                           reply_markup=types.ReplyKeyboardRemove())
+
+
 @dp.message_handler(lambda message: not len(message.photo) > 0, state=FormTeacher.questionsI)
 async def process_is_photo(message: types.Message):
     await message.reply('Rasm kiriting! \n Bad input.')
@@ -133,7 +145,8 @@ async def process_question(message: types.Message, state: FSMContext):
     questions_i.append(message.photo[-1].file_id)
     await state.update_data(questionsI=questions_i)
     await message.reply(f'{len(questions_i)}-savolning javoblarini kiriting!')
-    await bot.send_message(message.chat.id, 'Misol: To`g`ri javob\nNoto`g`ri javob\nNoto`g`ri javob\n...')
+    await bot.send_message(message.chat.id, 'Misol: To`g`ri javob\nNoto`g`ri javob\nNoto`g`ri javob\n...',
+                           reply_markup=types.ReplyKeyboardRemove())
 
 
 @dp.message_handler(state=FormTeacher.questionsQ)
@@ -150,7 +163,9 @@ async def process_question(message: types.Message, state: FSMContext):
                             'Tasdiqlash uchun `Tasdiqlayman`ni kiriting', reply_markup=markup)
     else:
         await FormTeacher.previous()
-        await message.reply(f'{len(questions_q) + 1}-savolning rasmini kiriting!')
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True, selective=True)
+        markup.add('Back')
+        await message.reply(f'{len(questions_q) + 1}-savolning rasmini kiriting!', reply_markup=markup)
 
 
 @dp.message_handler(lambda message: message.text != "Tasdiqlayman", state=FormTeacher.is_yes)
@@ -252,7 +267,10 @@ async def process_get_questions(message: types.Message, state: FSMContext):
     data = await state.get_data()
     result = data.get('result') or 0
     if data['correct'] != message.text:
-        await kick_user(state, message)
+        if scheduler.running:
+            scheduler.shutdown()
+        await state.finish()
+        await bot.send_message('Siz noto`g`ri javob berdingiz, Tayyorlani bqayta urinib ko`ring')
 
         attempt = attempt_coll.find_one({'user_id': message.from_user.id, 'key': data['key']})
 
@@ -298,7 +316,8 @@ async def process_get_questions(message: types.Message, state: FSMContext):
                 'user_id': message.from_user.id,
                 'success': 'Yes'
             }
-            results_coll.update_one({'user_id': message.from_user.id, 'key': data['key']}, {'$set': user_result}, upsert=True)
+            results_coll.update_one({'user_id': message.from_user.id, 'key': data['key']}, {'$set': user_result},
+                                    upsert=True)
             await state.finish()
             if scheduler.running:
                 scheduler.shutdown()
