@@ -270,7 +270,7 @@ async def process_get_questions(message: types.Message, state: FSMContext):
         if scheduler.running:
             scheduler.shutdown()
         await state.finish()
-        await bot.send_message('Siz noto`g`ri javob berdingiz, Tayyorlani bqayta urinib ko`ring')
+        await bot.send_message(message.chat.id, 'Siz noto`g`ri javob berdingiz, Tayyorlani bqayta urinib ko`ring')
 
         attempt = attempt_coll.find_one({'user_id': message.from_user.id, 'key': data['key']})
 
