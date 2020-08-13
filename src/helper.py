@@ -68,7 +68,7 @@ class FormTeacher(StatesGroup):
 
 
 class FormAbt(StatesGroup):
-    name = State()
+    # name = State()
     question = State()
     result = State()
     final = State()

@@ -127,7 +127,6 @@ async def process_edit_prev(message: types.Message, state: FSMContext):
     questions_q = data.get('questionsQ')
     del questions_q[-1]
     await state.update_data(questionsQ=questions_q)
-    print(questions_q)
     await bot.send_message(message.chat.id, 'Oldingi savolning javoblarini qayta kiriting',
                            reply_markup=types.ReplyKeyboardRemove())
 
@@ -206,18 +205,18 @@ async def process_starting(message: types.Message):
     if not is_on['on']:
         return
 
-    await FormAbt.name.set()
+    await FormAbt.question.set()
     markup = types.ReplyKeyboardRemove()
 
-    await bot.send_message(message.chat.id, 'Ism sharifingizni kiriting!', reply_markup=markup)
+    await bot.send_message(message.chat.id, 'Savollar uchun maxsus kodni kiriting!', reply_markup=markup)
 
 
-@dp.message_handler(state=FormAbt.name)
-async def process_name(message: types.Message, state: FSMContext):
-    await FormAbt.next()
-    await state.update_data(name=message.text)
-
-    await bot.send_message(message.chat.id, 'Savollar uchun maxsus kodni kiriting!')
+# @dp.message_handler(state=FormAbt.name)
+# async def process_name(message: types.Message, state: FSMContext):
+#     await FormAbt.next()
+#     await state.update_data(name=message.text)
+#
+#     await bot.send_message(message.chat.id, 'Savollar uchun maxsus kodni kiriting!')
 
 
 @dp.message_handler(lambda message: message.text[0] != "_", state=FormAbt.question)
@@ -270,14 +269,16 @@ async def process_get_questions(message: types.Message, state: FSMContext):
         if scheduler.running:
             scheduler.shutdown()
         await state.finish()
-        await bot.send_message(message.chat.id, 'Siz noto`g`ri javob berdingiz, Tayyorlani bqayta urinib ko`ring')
+        await bot.send_message(message.chat.id, 'Siz noto`g`ri javob berdingiz, Tayyorlanib qayta urinib ko`ring',
+                               reply_markup=types.ReplyKeyboardRemove())
 
         attempt = attempt_coll.find_one({'user_id': message.from_user.id, 'key': data['key']})
 
         if int(attempt['count']) >= 10:
+            name = message.from_user.first_name + ' ' + message.from_user.last_name if message.from_user.last_name else ''
             username = message.from_user.username or None
             user_result = {
-                'name': data['name'],
+                'name': name,
                 'username': username,
                 'key': data['key'],
                 'user_id': message.from_user.id,
@@ -308,9 +309,10 @@ async def process_get_questions(message: types.Message, state: FSMContext):
             await bot.send_message(message.chat.id,
                                    'Siz hamma savolga to`g`ri javob berdingiz! Shunday o`qishda davom eting!',
                                    reply_markup=types.ReplyKeyboardRemove())
+            name = message.from_user.first_name + ' ' + message.from_user.last_name if message.from_user.last_name else ''
             username = message.from_user.username or None
             user_result = {
-                'name': data['name'],
+                'name': name,
                 'username': username,
                 'key': data['key'],
                 'user_id': message.from_user.id,
@@ -365,16 +367,16 @@ async def on_shutdown(dispatcher: Dispatcher):
 
 
 if __name__ == '__main__':
-#    executor.start_polling(dp, skip_updates=True, on_shutdown=on_shutdown)
-    context = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)
-    context.load_cert_chain(WEBHOOK_SSL_CERT, WEBHOOK_SSL_PRIV)
-    start_webhook(
-        dispatcher=dp,
-        webhook_path=WEBHOOK_PATH,
-        on_startup=on_startup,
-        on_shutdown=on_shutdown,
-        skip_updates=True,
-        host=WEBAPP_HOST,
-        port=WEBAPP_PORT,
-        ssl_context = context
-    )
+    executor.start_polling(dp, skip_updates=True, on_shutdown=on_shutdown)
+    # context = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)
+    # context.load_cert_chain(WEBHOOK_SSL_CERT, WEBHOOK_SSL_PRIV)
+    # start_webhook(
+    #     dispatcher=dp,
+    #     webhook_path=WEBHOOK_PATH,
+    #     on_startup=on_startup,
+    #     on_shutdown=on_shutdown,
+    #     skip_updates=True,
+    #     host=WEBAPP_HOST,
+    #     port=WEBAPP_PORT,
+    #     ssl_context=context
+    # )
