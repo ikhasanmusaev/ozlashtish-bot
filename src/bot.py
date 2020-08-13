@@ -11,7 +11,7 @@ from aiogram.dispatcher import FSMContext
 from aiogram.dispatcher.filters import Text
 from aiogram.utils import executor
 from aiogram.utils.executor import start_webhook
-
+from asyncio import CancelledError
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from helper import generate_key, FormTeacher, FormAbt, generate_test, generate_ans, run_time, get_results, IsOn, IsOff
@@ -45,10 +45,11 @@ async def kick_user(state, message):
     if scheduler.running:
         scheduler.shutdown()
     await state.finish()
-    await bot.send_message(message.chat.id,
-                           'Siz belgilangan vaqtda javob bera olmadingiz.\n Tayyorlanib, keyinroq harakat qiling.',
-                           reply_markup=types.ReplyKeyboardRemove())
-
+    try:
+        await bot.send_message(message.chat.id, 'Siz belgilangan vaqtda javob bera olmadingiz.\n Tayyorlanib, keyinroq harakat qiling.', reply_markup=types.ReplyKeyboardRemove())
+    except CancelledError:
+        return
+    return
 
 @dp.message_handler(commands='start')
 async def cmd_start(message: types.Message):
@@ -222,6 +223,7 @@ async def process_get_questions(message: types.Message, state: FSMContext):
     is_on = data['is_on']
     if not is_on:
         await bot.send_message(message.chat.id, 'Bu savol avtori tomonidan vaqtincha to`xtatilgan')
+        await state.finish()
         return
 
     attempt = attempt_coll.find_one({'user_id': message.from_user.id, 'key': message.text})
@@ -234,6 +236,7 @@ async def process_get_questions(message: types.Message, state: FSMContext):
                                 upsert=False)
     else:
         await bot.send_message(message.chat.id, 'Siz 10ta imkoniyatdan foydalanib bo`ldingiz!')
+        await state.finish()
         return
     if data:
         question = data['questions']
@@ -250,7 +253,7 @@ async def process_get_questions(message: types.Message, state: FSMContext):
         await FormAbt.next()
         await bot.send_message(message.chat.id,
                                f'Sizga har bir savolga javob berish uchun {str(time_interval)} sekund vaqt beriladi.')
-        time.sleep(3)
+        time.sleep(2)
         await bot.send_photo(message.chat.id, question[0][0],
                              'Savolga javobni tugmalar orqali bering.\n E`tiborli bo`ling', reply_markup=markup)
         run_time(scheduler, kick_user, time_interval, [state, message])
