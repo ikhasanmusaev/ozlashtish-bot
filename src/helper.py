@@ -76,3 +76,11 @@ class FormAbt(StatesGroup):
     correct = State()
     list_q = State()
     key = State()
+
+
+class IsOn(StatesGroup):
+    key = State()
+
+
+class IsOff(StatesGroup):
+    key = State()

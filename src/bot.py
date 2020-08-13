@@ -14,8 +14,8 @@ from aiogram.utils.executor import start_webhook
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
-from helper import generate_key, FormTeacher, FormAbt, generate_test, generate_ans, run_time, get_results
-from db.connection import question_coll, results_coll, on_coll, attempt_coll
+from helper import generate_key, FormTeacher, FormAbt, generate_test, generate_ans, run_time, get_results, IsOn, IsOff
+from db.connection import question_coll, results_coll, attempt_coll
 
 # logging.basicConfig(level=logging.INFO)
 
@@ -52,10 +52,6 @@ async def kick_user(state, message):
 
 @dp.message_handler(commands='start')
 async def cmd_start(message: types.Message):
-    is_on = on_coll.find_one({'find': 'find'}, ['on'])
-    if not is_on['on']:
-        return
-
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, selective=True)
     markup.add('Boshlash!')
 
@@ -201,10 +197,6 @@ async def process_save(message: types.Message, state: FSMContext):
 
 @dp.message_handler(Text(equals='Boshlash!', ignore_case=True) | Text(equals='Boshlash', ignore_case=True))
 async def process_starting(message: types.Message):
-    is_on = on_coll.find_one({'find': 'find'}, ['on'])
-    if not is_on['on']:
-        return
-
     await FormAbt.question.set()
     markup = types.ReplyKeyboardRemove()
 
@@ -226,6 +218,12 @@ async def process_key_invalid(message: types.Message):
 
 @dp.message_handler(lambda message: message.text[0] == "_", state=FormAbt.question)
 async def process_get_questions(message: types.Message, state: FSMContext):
+    data = question_coll.find_one({"key": message.text}, ['questions', 'time', '-_id', 'is_on'])
+    is_on = data['is_on']
+    if not is_on:
+        await bot.send_message(message.chat.id, 'Bu savol avtori tomonidan vaqtincha to`xtatilgan')
+        return
+
     attempt = attempt_coll.find_one({'user_id': message.from_user.id, 'key': message.text})
     if not attempt:
         attempt_coll.insert_one({"user_id": message.from_user.id, 'key': message.text, 'count': 1})
@@ -237,7 +235,6 @@ async def process_get_questions(message: types.Message, state: FSMContext):
     else:
         await bot.send_message(message.chat.id, 'Siz 10ta imkoniyatdan foydalanib bo`ldingiz!')
         return
-    data = question_coll.find_one({"key": message.text}, ['questions', 'time', '-_id'])
     if data:
         question = data['questions']
         random.shuffle(question)
@@ -348,15 +345,31 @@ async def on_startup(dp):
 
 
 @dp.message_handler(commands=['offBot'])
-async def process_on(message: types.Message):
-    on_coll.update_one({'find': 'find'}, {"$set": {'on': False}}, upsert=True)
-    await bot.send_message(message.chat.id, 'Bot imkoniyatlari o`chirildi')
+async def process_off(message: types.Message):
+    await bot.send_message(message.chat.id, 'Savollarning maxsus kodini kiriting!')
+    await IsOff.key.set()
+
+
+@dp.message_handler(state=IsOff.key)
+async def off_bot_by_key(message: types.Message, state: FSMContext):
+    key = message.text
+    question_coll.update_one({'key': key}, {'$set': {'is_on': False}}, upsert=False)
+    await bot.send_message(message.chat.id, f'{key} kodli savol imkoniyatlari to`xtatildi')
+    await state.finish()
 
 
 @dp.message_handler(commands=['onBot'])
 async def process_on(message: types.Message):
-    on_coll.update_one({'find': 'find'}, {"$set": {'on': True}}, upsert=False)
-    await bot.send_message(message.chat.id, 'Bot imkoniyatlari faollashtirildi')
+    await bot.send_message(message.chat.id, 'Savollarning maxsus kodini kiriting!')
+    await IsOn.key.set()
+
+
+@dp.message_handler(state=IsOn.key)
+async def on_bot_by_key(message: types.Message, state: FSMContext):
+    key = message.text
+    question_coll.update_one({'key': key}, {'$set': {'is_on': True}}, upsert=False)
+    await bot.send_message(message.chat.id, f'{key} kodli savol imkoniyatlari faollashtirildi')
+    await state.finish()
 
 
 async def on_shutdown(dispatcher: Dispatcher):
