@@ -31,7 +31,7 @@ storage = MemoryStorage()
 dp = Dispatcher(bot, storage=storage)
 
 WEBHOOK_HOST = f'https://{IP}:8443'
-WEBHOOK_PATH = f'/web/'
+WEBHOOK_PATH = f'/{TOKEN}/'
 WEBHOOK_URL = f"{WEBHOOK_HOST}{WEBHOOK_PATH}"
 
 WEBHOOK_SSL_CERT = path.abspath(path.join(path.dirname(path.abspath(__file__)), './webhook_cert.pem'))
@@ -342,19 +342,13 @@ async def process_set_results(message: types.Message, state: FSMContext):
 
 
 async def on_startup(dp):
-    await bot.set_webhook(WEBHOOK_URL)
+    await bot.set_webhook(WEBHOOK_URL, certificate=open(WEBHOOK_SSL_CERT, 'rb'))
 
 
 @dp.message_handler(commands=['offBot'])
 async def process_on(message: types.Message):
     on_coll.update_one({'find': 'find'}, {"$set": {'on': False}}, upsert=True)
     await bot.send_message(message.chat.id, 'Bot imkoniyatlari o`chirildi')
-
-
-#######
-########
-######## popitka qiliw
-########
 
 
 @dp.message_handler(commands=['onBot'])
@@ -371,16 +365,16 @@ async def on_shutdown(dispatcher: Dispatcher):
 
 
 if __name__ == '__main__':
-    executor.start_polling(dp, skip_updates=True, on_shutdown=on_shutdown)
-#    context = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)
-#   context.load_cert_chain(WEBHOOK_SSL_CERT, WEBHOOK_SSL_PRIV)
-#  start_webhook(
-#      dispatcher=dp,
-#     webhook_path=WEBHOOK_PATH,
-#    on_startup=on_startup,
-#   on_shutdown=on_shutdown,
-#    skip_updates=True,
-#     host=WEBAPP_HOST,
-#      port=WEBAPP_PORT,
-#       ssl_context = context
-#    )
+#    executor.start_polling(dp, skip_updates=True, on_shutdown=on_shutdown)
+    context = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)
+    context.load_cert_chain(WEBHOOK_SSL_CERT, WEBHOOK_SSL_PRIV)
+    start_webhook(
+        dispatcher=dp,
+        webhook_path=WEBHOOK_PATH,
+        on_startup=on_startup,
+        on_shutdown=on_shutdown,
+        skip_updates=True,
+        host=WEBAPP_HOST,
+        port=WEBAPP_PORT,
+        ssl_context = context
+    )
