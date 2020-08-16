@@ -187,7 +187,8 @@ async def process_save(message: types.Message, state: FSMContext):
             'questions': test,
             'count': data['count'],
             'time': data['time'],
-            'key': secret_key
+            'key': secret_key,
+            'is_on': True
         }
 
         question_coll.insert_one(to_db)
@@ -219,7 +220,7 @@ async def process_key_invalid(message: types.Message):
 
 @dp.message_handler(lambda message: message.text[0] == "_", state=FormAbt.question)
 async def process_get_questions(message: types.Message, state: FSMContext):
-    data = question_coll.find_one({"key": message.text}, ['questions', 'time', '-_id', 'is_on'])
+    data = question_coll.find_one({"key": message.text}, ['questions', 'time', 'is_on', '-_id'])
     is_on = data['is_on']
     if not is_on:
         await bot.send_message(message.chat.id, 'Bu savol avtori tomonidan vaqtincha to`xtatilgan')
@@ -229,7 +230,7 @@ async def process_get_questions(message: types.Message, state: FSMContext):
     attempt = attempt_coll.find_one({'user_id': message.from_user.id, 'key': message.text})
     if not attempt:
         attempt_coll.insert_one({"user_id": message.from_user.id, 'key': message.text, 'count': 1})
-    elif int(attempt['count']) < 10:
+    elif int(attempt['count']) < 2:
         count = attempt['count']
         attempt_coll.update_one({'user_id': message.from_user.id},
                                 {"$set": {"user_id": message.from_user.id, 'count': count + 1, 'key': message.text}},
@@ -274,7 +275,7 @@ async def process_get_questions(message: types.Message, state: FSMContext):
 
         attempt = attempt_coll.find_one({'user_id': message.from_user.id, 'key': data['key']})
 
-        if int(attempt['count']) >= 10:
+        if int(attempt['count']) >= 2:
             name = message.from_user.first_name + ' ' + message.from_user.last_name if message.from_user.last_name else ''
             username = message.from_user.username or None
             user_result = {
@@ -288,7 +289,7 @@ async def process_get_questions(message: types.Message, state: FSMContext):
                                     upsert=True)
     else:
         result += 1
-        if result < 20:
+        if result < 2:
             if scheduler.running:
                 scheduler.shutdown()
             question = data['question']
@@ -309,7 +310,8 @@ async def process_get_questions(message: types.Message, state: FSMContext):
             await bot.send_message(message.chat.id,
                                    'Siz hamma savolga to`g`ri javob berdingiz! Shunday o`qishda davom eting!',
                                    reply_markup=types.ReplyKeyboardRemove())
-            name = message.from_user.first_name + ' ' + message.from_user.last_name if message.from_user.last_name else ''
+
+            name = message.from_user.first_name + ' ' + message.from_user.last_name
             username = message.from_user.username or None
             user_result = {
                 'name': name,
@@ -339,7 +341,7 @@ async def process_set_results(message: types.Message, state: FSMContext):
         await bot.send_message(message.chat.id, "Kod xato!")
     else:
         link = get_results(data)
-
+    await state.finish()
     await bot.send_message(message.chat.id, link)
 
 
@@ -383,16 +385,16 @@ async def on_shutdown(dispatcher: Dispatcher):
 
 
 if __name__ == '__main__':
-    # executor.start_polling(dp, skip_updates=True, on_shutdown=on_shutdown)
-    context = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)
-    context.load_cert_chain(WEBHOOK_SSL_CERT, WEBHOOK_SSL_PRIV)
-    start_webhook(
-        dispatcher=dp,
-        webhook_path=WEBHOOK_PATH,
-        on_startup=on_startup,
-        on_shutdown=on_shutdown,
-        skip_updates=True,
-        host=WEBAPP_HOST,
-        port=WEBAPP_PORT,
-        ssl_context=context
-    )
+    executor.start_polling(dp, skip_updates=True, on_shutdown=on_shutdown)
+    # context = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)
+    # context.load_cert_chain(WEBHOOK_SSL_CERT, WEBHOOK_SSL_PRIV)
+    # start_webhook(
+    #     dispatcher=dp,
+    #     webhook_path=WEBHOOK_PATH,
+    #     on_startup=on_startup,
+    #     on_shutdown=on_shutdown,
+    #     skip_updates=True,
+    #     host=WEBAPP_HOST,
+    #     port=WEBAPP_PORT,
+    #     ssl_context=context
+    # )
