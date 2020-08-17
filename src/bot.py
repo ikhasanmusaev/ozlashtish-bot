@@ -230,7 +230,7 @@ async def process_get_questions(message: types.Message, state: FSMContext):
     attempt = attempt_coll.find_one({'user_id': message.from_user.id, 'key': message.text})
     if not attempt:
         attempt_coll.insert_one({"user_id": message.from_user.id, 'key': message.text, 'count': 1})
-    elif int(attempt['count']) < 2:
+    elif int(attempt['count']) < 10:
         count = attempt['count']
         attempt_coll.update_one({'user_id': message.from_user.id},
                                 {"$set": {"user_id": message.from_user.id, 'count': count + 1, 'key': message.text}},
@@ -275,7 +275,7 @@ async def process_get_questions(message: types.Message, state: FSMContext):
 
         attempt = attempt_coll.find_one({'user_id': message.from_user.id, 'key': data['key']})
 
-        if int(attempt['count']) >= 2:
+        if int(attempt['count']) >= 10:
             name = message.from_user.first_name + ' ' + message.from_user.last_name if message.from_user.last_name else ''
             username = message.from_user.username or None
             user_result = {
@@ -289,7 +289,7 @@ async def process_get_questions(message: types.Message, state: FSMContext):
                                     upsert=True)
     else:
         result += 1
-        if result < 2:
+        if result < 20:
             if scheduler.running:
                 scheduler.shutdown()
             question = data['question']
@@ -385,16 +385,16 @@ async def on_shutdown(dispatcher: Dispatcher):
 
 
 if __name__ == '__main__':
-    executor.start_polling(dp, skip_updates=True, on_shutdown=on_shutdown)
-    # context = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)
-    # context.load_cert_chain(WEBHOOK_SSL_CERT, WEBHOOK_SSL_PRIV)
-    # start_webhook(
-    #     dispatcher=dp,
-    #     webhook_path=WEBHOOK_PATH,
-    #     on_startup=on_startup,
-    #     on_shutdown=on_shutdown,
-    #     skip_updates=True,
-    #     host=WEBAPP_HOST,
-    #     port=WEBAPP_PORT,
-    #     ssl_context=context
-    # )
+    # executor.start_polling(dp, skip_updates=True, on_shutdown=on_shutdown)
+    context = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)
+    context.load_cert_chain(WEBHOOK_SSL_CERT, WEBHOOK_SSL_PRIV)
+    start_webhook(
+         dispatcher=dp,
+         webhook_path=WEBHOOK_PATH,
+         on_startup=on_startup,
+         on_shutdown=on_shutdown,
+         skip_updates=True,
+         host=WEBAPP_HOST,
+         port=WEBAPP_PORT,
+         ssl_context=context
+     )
