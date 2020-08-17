@@ -350,6 +350,7 @@ async def process_get_results(message: types.Message):
 
 @dp.message_handler(state=FormTeacher.get_result)
 async def process_set_results(message: types.Message, state: FSMContext):
+    link = 'Hamma ismini kirtmagan'
     data = [i for i in results_coll.find({"key": message.text}, ['user_id', '-_id', 'success'])]
     if not data:
         await bot.send_message(message.chat.id, "Kod xato!")

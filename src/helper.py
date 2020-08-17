@@ -18,11 +18,14 @@ def get_results(results):
     content_yes = ''
     content_no = ''
     for i in results:
-        if i['success'] == 'Yes':
-            data = users_coll.find_one({'user_id': i['user_id']}, ['user_id', ])
-            content_yes += f'<p>{data["name"]}</p>'
+        data = users_coll.find_one({'user_id': i['user_id']}, ['user_id', 'name'])
+        if data:
+            if i['success'] == 'Yes':
+                content_yes += f'<p>{data["name"]}</p>'
+            else:
+                content_no += f'<p>{data["name"]}</p>'
         else:
-            content_no += f'<p>{data["name"]}</p>'
+            continue
     content += '<b>O`tganlar:</b><br>' + content_yes + '<hr>' + '<b>O`ta olmaganlar:</b><br>' + content_no
     response = telegraph.create_page(
         "A'lochilar",
