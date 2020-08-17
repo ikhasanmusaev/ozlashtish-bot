@@ -4,6 +4,8 @@ import string
 from telegraph import Telegraph
 from aiogram.dispatcher.filters.state import State, StatesGroup
 
+from db.connection import users_coll
+
 telegraph = Telegraph(access_token='0e1091ab7dacc5a12236177b70bbd426c822904a075efa5e22a4ffd7eff0')
 
 
@@ -17,9 +19,10 @@ def get_results(results):
     content_no = ''
     for i in results:
         if i['success'] == 'Yes':
-            content_yes += f'<p>{i["name"]}</p>'
+            data = users_coll.find_one({'user_id': i['user_id']}, ['user_id', ])
+            content_yes += f'<p>{data["name"]}</p>'
         else:
-            content_no += f'<p>{i["name"]}</p>'
+            content_no += f'<p>{data["name"]}</p>'
     content += '<b>O`tganlar:</b><br>' + content_yes + '<hr>' + '<b>O`ta olmaganlar:</b><br>' + content_no
     response = telegraph.create_page(
         "A'lochilar",
@@ -84,3 +87,7 @@ class IsOn(StatesGroup):
 
 class IsOff(StatesGroup):
     key = State()
+
+
+class Auth(StatesGroup):
+    name = State()

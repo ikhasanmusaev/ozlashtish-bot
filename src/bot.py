@@ -14,8 +14,8 @@ from aiogram.utils.executor import start_webhook
 from asyncio import CancelledError
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
-from helper import generate_key, FormTeacher, FormAbt, generate_test, generate_ans, run_time, get_results, IsOn, IsOff
-from db.connection import question_coll, results_coll, attempt_coll
+from helper import generate_key, FormTeacher, FormAbt, generate_test, generate_ans, run_time, get_results, IsOn, IsOff, Auth
+from db.connection import question_coll, results_coll, attempt_coll, users_coll
 
 # logging.basicConfig(level=logging.INFO)
 
@@ -46,10 +46,13 @@ async def kick_user(state, message):
         scheduler.shutdown()
     await state.finish()
     try:
-        await bot.send_message(message.chat.id, 'Siz belgilangan vaqtda javob bera olmadingiz.\n Tayyorlanib, keyinroq harakat qiling.', reply_markup=types.ReplyKeyboardRemove())
+        await bot.send_message(message.chat.id,
+                               'Siz belgilangan vaqtda javob bera olmadingiz.\n Tayyorlanib, keyinroq harakat qiling.',
+                               reply_markup=types.ReplyKeyboardRemove())
     except CancelledError:
         return
     return
+
 
 @dp.message_handler(commands='start')
 async def cmd_start(message: types.Message):
@@ -221,25 +224,27 @@ async def process_key_invalid(message: types.Message):
 @dp.message_handler(lambda message: message.text[0] == "_", state=FormAbt.question)
 async def process_get_questions(message: types.Message, state: FSMContext):
     data = question_coll.find_one({"key": message.text}, ['questions', 'time', 'is_on', '-_id'])
-    is_on = data['is_on']
-    if not is_on:
-        await bot.send_message(message.chat.id, 'Bu savol avtori tomonidan vaqtincha to`xtatilgan')
-        await state.finish()
-        return
-
-    attempt = attempt_coll.find_one({'user_id': message.from_user.id, 'key': message.text})
-    if not attempt:
-        attempt_coll.insert_one({"user_id": message.from_user.id, 'key': message.text, 'count': 1})
-    elif int(attempt['count']) < 10:
-        count = attempt['count']
-        attempt_coll.update_one({'user_id': message.from_user.id},
-                                {"$set": {"user_id": message.from_user.id, 'count': count + 1, 'key': message.text}},
-                                upsert=False)
-    else:
-        await bot.send_message(message.chat.id, 'Siz 10ta imkoniyatdan foydalanib bo`ldingiz!')
-        await state.finish()
-        return
     if data:
+        is_on = data['is_on']
+        if not is_on:
+            await bot.send_message(message.chat.id, 'Bu savol avtori tomonidan vaqtincha to`xtatilgan')
+            await state.finish()
+            return
+
+        attempt = attempt_coll.find_one({'user_id': message.from_user.id, 'key': message.text})
+        if not attempt:
+            attempt_coll.insert_one({"user_id": message.from_user.id, 'key': message.text, 'count': 1})
+        elif int(attempt['count']) < 10:
+            count = attempt['count']
+            attempt_coll.update_one({'user_id': message.from_user.id},
+                                    {"$set": {"user_id": message.from_user.id, 'count': count + 1,
+                                              'key': message.text}},
+                                    upsert=False)
+        else:
+            await bot.send_message(message.chat.id, 'Siz 10ta imkoniyatdan foydalanib bo`ldingiz!')
+            await state.finish()
+            return
+
         question = data['questions']
         random.shuffle(question)
         await state.update_data(question=question)
@@ -260,6 +265,7 @@ async def process_get_questions(message: types.Message, state: FSMContext):
         run_time(scheduler, kick_user, time_interval, [state, message])
     else:
         await bot.send_message(message.chat.id, 'Kodni xato kiritdingiz, Iltimos qayta urinib ko`ring')
+        return
 
 
 @dp.message_handler(state=FormAbt.result)
@@ -276,10 +282,13 @@ async def process_get_questions(message: types.Message, state: FSMContext):
         attempt = attempt_coll.find_one({'user_id': message.from_user.id, 'key': data['key']})
 
         if int(attempt['count']) >= 10:
-            name = message.from_user.first_name + ' ' + message.from_user.last_name if message.from_user.last_name else ''
+            users_data = users_coll.find_one({'user_id': message.from_user.id}, ['user_id', 'name'])
+            if not users_data['name']:
+                await bot.send_message(message.from_user.id,
+                                       'Sizning ismingiz bazaga kiritlmagan. /name orqali ismingizni bazaga yozib qo`ying')
+
             username = message.from_user.username or None
             user_result = {
-                'name': name,
                 'username': username,
                 'key': data['key'],
                 'user_id': message.from_user.id,
@@ -306,15 +315,21 @@ async def process_get_questions(message: types.Message, state: FSMContext):
             run_time(scheduler, kick_user, time_interval, [state, message])
             await state.update_data(result=result)
         else:
+            if scheduler.running:
+                scheduler.shutdown()
             await FormAbt.next()
             await bot.send_message(message.chat.id,
                                    'Siz hamma savolga to`g`ri javob berdingiz! Shunday o`qishda davom eting!',
                                    reply_markup=types.ReplyKeyboardRemove())
 
-            name = message.from_user.first_name + ' ' + message.from_user.last_name
+            users_data = users_coll.find_one({'user_id': message.from_user.id}, ['user_id', 'name'])
+
+            if not users_data:
+                await bot.send_message(message.from_user.id,
+                                       'Sizning ismingiz bazaga kiritlmagan. /name orqali ismingizni bazaga yozib qo`ying')
+
             username = message.from_user.username or None
             user_result = {
-                'name': name,
                 'username': username,
                 'key': data['key'],
                 'user_id': message.from_user.id,
@@ -323,8 +338,7 @@ async def process_get_questions(message: types.Message, state: FSMContext):
             results_coll.update_one({'user_id': message.from_user.id, 'key': data['key']}, {'$set': user_result},
                                     upsert=True)
             await state.finish()
-            if scheduler.running:
-                scheduler.shutdown()
+
 
 
 @dp.message_handler(commands='getR')
@@ -336,7 +350,7 @@ async def process_get_results(message: types.Message):
 
 @dp.message_handler(state=FormTeacher.get_result)
 async def process_set_results(message: types.Message, state: FSMContext):
-    data = [i for i in results_coll.find({"key": message.text}, ['name', 'username', '-_id', 'success'])]
+    data = [i for i in results_coll.find({"key": message.text}, ['user_id', '-_id', 'success'])]
     if not data:
         await bot.send_message(message.chat.id, "Kod xato!")
     else:
@@ -377,6 +391,21 @@ async def on_bot_by_key(message: types.Message, state: FSMContext):
     await state.finish()
 
 
+@dp.message_handler(commands=['name'])
+async def process_auth(message: types.Message):
+    await Auth.name.set()
+
+    await bot.send_message(message.chat.id, 'Ism-sharifingizni kiriting!')
+
+
+@dp.message_handler(state=Auth.name)
+async def process_name(message: types.Message, state: FSMContext):
+    users_coll.update_one({'user_id': message.from_user.id},
+                          {'$set': {'name': message.text, 'user_id': message.from_user.id}}, upsert=True)
+    await state.finish()
+    await bot.send_message(message.chat.id, 'Sizning ism sharifingiz yozib olindi')
+
+
 async def on_shutdown(dispatcher: Dispatcher):
     logging.warning('Shutting down..')
     await bot.delete_webhook()
@@ -398,3 +427,4 @@ if __name__ == '__main__':
          port=WEBAPP_PORT,
          ssl_context=context
      )
+
